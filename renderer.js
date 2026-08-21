@@ -30,7 +30,7 @@ const renameCancelBtn = document.getElementById('rename-cancel-btn');
 
 // State
 let cycles = []; // List of durations in seconds
-let lastCycleTime = 0;
+let lastCycleTime = null; // null until timing is started by first record press
 let videoFileName = "";
 let videoFilePath = "";
 
@@ -160,7 +160,7 @@ function loadVideoFromPath(filePath) {
 
   // Reset cycles
   cycles = [];
-  lastCycleTime = 0;
+  lastCycleTime = null;
   
   resetZoom();
   resetAngle();
@@ -178,7 +178,7 @@ function loadVideoFromFileObject(file) {
   
   // Reset cycles
   cycles = [];
-  lastCycleTime = 0;
+  lastCycleTime = null;
   
   resetZoom();
   resetAngle();
@@ -212,8 +212,12 @@ video.addEventListener('click', () => {
 // Update overlay current time
 video.addEventListener('timeupdate', () => {
   timeDisplay.textContent = formatTime(video.currentTime);
-  const currentCycleDuration = Math.max(0, video.currentTime - lastCycleTime);
-  cycleDisplay.textContent = `Cycle #${cycles.length} - ${formatNumberForExcel(currentCycleDuration, 1)}s`;
+  if (lastCycleTime === null) {
+    cycleDisplay.textContent = `Cycle #1 - Press Enter to Start`;
+  } else {
+    const currentCycleDuration = Math.max(0, video.currentTime - lastCycleTime);
+    cycleDisplay.textContent = `Cycle #${cycles.length + 1} - ${formatNumberForExcel(currentCycleDuration, 1)}s`;
+  }
 });
 
 // --- Progress Bar Seeking & Scrubbing State & Logic ---
@@ -303,29 +307,44 @@ if (progressBarContainer) {
 // Record Cycle
 function recordCycle() {
   if (!video.src) return;
-  // Don't record if no cycles yet and lastCycleTime is 0 (first cycle)
-  if (lastCycleTime === 0 && cycles.length === 0) return;
   const currentTime = video.currentTime;
+
+  // First press sets start of Cycle #1
+  if (lastCycleTime === null) {
+    lastCycleTime = currentTime;
+    showToast(`Cycle timing started at ${formatTime(currentTime)}`);
+    return;
+  }
+
   const duration = parseFloat((currentTime - lastCycleTime).toFixed(2));
-  
   cycles.push({
-    number: cycles.length,
+    number: cycles.length + 1,
     timestamp: formatTime(currentTime),
     rawTimestampSeconds: currentTime,
     duration: duration > 0 ? duration : 0
   });
-  
+
   lastCycleTime = currentTime;
   renderTable();
 }
 
 // Undo Last Cycle
 function deleteLastCycle(rewind = true) {
-  if (cycles.length === 0) return;
-  
+  if (cycles.length === 0) {
+    if (lastCycleTime !== null) {
+      lastCycleTime = null;
+      showToast("Reset cycle timing start");
+    }
+    return;
+  }
+
   const deletedCycle = cycles.pop();
-  lastCycleTime = cycles.length > 0 ? (cycles[cycles.length - 1].rawTimestampSeconds || 0) : 0;
-  
+  if (cycles.length > 0) {
+    lastCycleTime = cycles[cycles.length - 1].rawTimestampSeconds;
+  } else {
+    lastCycleTime = null;
+  }
+
   if (rewind) {
     // Rewind to timestamp of deleted cycle minus 2 seconds
     const deletedTimestamp = deletedCycle.rawTimestampSeconds !== undefined ? deletedCycle.rawTimestampSeconds : video.currentTime;
