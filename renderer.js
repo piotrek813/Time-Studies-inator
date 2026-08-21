@@ -28,6 +28,65 @@ const renameInput = document.getElementById('rename-input');
 const renameSaveBtn = document.getElementById('rename-save-btn');
 const renameCancelBtn = document.getElementById('rename-cancel-btn');
 
+// Comment Modal Elements
+const commentModal = document.getElementById('comment-modal');
+const commentModalTitle = document.getElementById('comment-modal-title');
+const commentInput = document.getElementById('comment-input');
+const commentSaveBtn = document.getElementById('comment-save-btn');
+const commentCancelBtn = document.getElementById('comment-cancel-btn');
+let activeCommentCycleIndex = null;
+
+function openCommentModal(index) {
+  if (index < 0 || index >= cycles.length) return;
+  activeCommentCycleIndex = index;
+  const c = cycles[index];
+  commentModalTitle.textContent = `Cycle #${c.number} Comment`;
+  commentInput.value = c.comment || '';
+  commentModal.style.display = 'flex';
+  setTimeout(() => {
+    commentInput.focus();
+    commentInput.select();
+  }, 50);
+}
+
+function closeCommentModal() {
+  commentModal.style.display = 'none';
+  activeCommentCycleIndex = null;
+}
+
+function saveComment() {
+  if (activeCommentCycleIndex === null || activeCommentCycleIndex >= cycles.length) {
+    closeCommentModal();
+    return;
+  }
+  const newComment = commentInput.value.replace(/[\r\n]+/g, ' ').trim();
+  cycles[activeCommentCycleIndex].comment = newComment;
+  closeCommentModal();
+  renderTable();
+  showToast(newComment ? `Comment saved for Cycle #${cycles[activeCommentCycleIndex].number}` : `Comment cleared`);
+}
+
+if (commentSaveBtn) commentSaveBtn.addEventListener('click', saveComment);
+if (commentCancelBtn) commentCancelBtn.addEventListener('click', closeCommentModal);
+if (commentInput) {
+  commentInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      e.stopPropagation();
+      saveComment();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCommentModal();
+    }
+  });
+
+  commentInput.addEventListener('input', () => {
+    if (commentInput.value.includes('\n') || commentInput.value.includes('\r')) {
+      commentInput.value = commentInput.value.replace(/[\r\n]+/g, ' ');
+    }
+  });
+}
+
 // State
 let cycles = []; // List of durations in seconds
 let lastCycleTime = null; // null until timing is started by first record press
@@ -397,10 +456,14 @@ function renderTable() {
   cycleTableBody.innerHTML = '';
   cycles.forEach((c, index) => {
     const tr = document.createElement('tr');
+    const commentText = c.comment || '';
     tr.innerHTML = `
       <td>${c.number}</td>
       <td>${c.timestamp}</td>
       <td class="duration">${formatNumberForExcel(c.duration)}s</td>
+      <td class="cycle-comment-cell" data-index="${index}" title="${commentText ? commentText : 'Click to edit comment'}">
+        ${commentText ? `<span class="comment-text">${commentText}</span>` : `<span class="comment-placeholder">+ Add</span>`}
+      </td>
       <td style="text-align: center;">
         <button class="btn-delete-row" data-index="${index}" title="Delete Cycle #${c.number}">🗑️</button>
       </td>
@@ -419,6 +482,18 @@ function renderTable() {
       }
     });
   });
+
+  // Attach event listeners for comment cells
+  const commentCells = cycleTableBody.querySelectorAll('.cycle-comment-cell');
+  commentCells.forEach(cell => {
+    cell.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(cell.getAttribute('data-index'), 10);
+      if (!isNaN(idx)) {
+        openCommentModal(idx);
+      }
+    });
+  });
   
   // Auto scroll table to bottom
   const container = document.getElementById('table-container');
@@ -433,14 +508,18 @@ function showToast(message) {
   toast.style.display = 'block';
   setTimeout(() => { toast.style.display = 'none'; }, 2000);
 }
-// 
-// Copy to Clipboard in Excel-ready format (All cycles)
+
+// Copy to Clipboard in Excel-ready format (All cycles + Comments)
 function copyToClipboard() {
   if (cycles.length === 0) return;
   
   const sep = getActiveDecimalSeparator();
-  // Format each cycle duration with active decimal separator
-  const clipboardText = cycles.map(c => formatNumberForExcel(c.duration)).join('\n');
+  // Format each cycle duration with active decimal separator, tab-separated from comment if present
+  const clipboardText = cycles.map(c => {
+    const formattedDuration = formatNumberForExcel(c.duration);
+    return c.comment ? `${formattedDuration}\t${c.comment}` : formattedDuration;
+  }).join('\n');
+
   ipcRenderer.send('copy-to-clipboard', clipboardText);
 
   showToast(`Copied all cycles! (decimal: '${sep}')`);
@@ -1082,8 +1161,8 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Prevent hotkeys if user is editing text/number inputs in modals
-  if (e.target.tagName === 'INPUT') return;
+  // Prevent hotkeys if user is editing text/number inputs or textareas in modals
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
 
   const combo = getEventKeyCombo(e);
   if (!combo) return;
