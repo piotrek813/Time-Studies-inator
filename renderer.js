@@ -369,17 +369,55 @@ function formatNumberForExcel(num, decimals = 2) {
   return sep === ',' ? formatted.replace('.', ',') : formatted;
 }
 
+// Delete cycle at a specific index
+function deleteCycleAtIndex(index) {
+  if (index < 0 || index >= cycles.length) return;
+
+  const deletedNum = cycles[index].number || (index + 1);
+  cycles.splice(index, 1);
+
+  // Renumber remaining cycles sequentially
+  cycles.forEach((c, idx) => {
+    c.number = idx + 1;
+  });
+
+  // Update lastCycleTime if the last cycle was deleted
+  if (cycles.length > 0) {
+    lastCycleTime = cycles[cycles.length - 1].rawTimestampSeconds;
+  } else {
+    lastCycleTime = null;
+  }
+
+  renderTable();
+  showToast(`Deleted Cycle #${deletedNum}`);
+}
+
 // Render Table UI
 function renderTable() {
   cycleTableBody.innerHTML = '';
-  cycles.forEach((c) => {
+  cycles.forEach((c, index) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${c.number}</td>
       <td>${c.timestamp}</td>
       <td class="duration">${formatNumberForExcel(c.duration)}s</td>
+      <td style="text-align: center;">
+        <button class="btn-delete-row" data-index="${index}" title="Delete Cycle #${c.number}">🗑️</button>
+      </td>
     `;
     cycleTableBody.appendChild(tr);
+  });
+
+  // Attach event listeners for row delete buttons
+  const deleteBtns = cycleTableBody.querySelectorAll('.btn-delete-row');
+  deleteBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.getAttribute('data-index'), 10);
+      if (!isNaN(idx)) {
+        deleteCycleAtIndex(idx);
+      }
+    });
   });
   
   // Auto scroll table to bottom

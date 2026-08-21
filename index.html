@@ -177,6 +177,14 @@
       font-family: monospace; pointer-events: none;
       box-shadow: 0 4px 10px rgba(0,0,0,0.4); white-space: nowrap;
     }
+    .btn-delete-row {
+      background: transparent; border: none; color: #ef4444;
+      cursor: pointer; padding: 2px 4px; font-size: 0.85rem;
+      border-radius: 4px; opacity: 0.6; transition: opacity 0.15s, background 0.15s;
+    }
+    .btn-delete-row:hover {
+      opacity: 1; background: rgba(239, 68, 68, 0.25);
+    }
   </style>
 </head>
 <body>
@@ -235,6 +243,7 @@
             <th>#</th>
             <th>Timestamp</th>
             <th>Cycle Time</th>
+            <th style="width: 32px;"></th>
           </tr>
         </thead>
         <tbody id="cycle-table-body">
