@@ -24,7 +24,12 @@ func main() {
 		log.Fatalf("Failed to create upload directory: %v", err)
 	}
 
-	http.HandleFunc("/", handleIndex)
+	// 1. Static file server serving current directory "."
+	// Automatically serves index.html at "/", plus any images/static files in the directory
+	fileServer := http.FileServer(http.Dir("."))
+	http.Handle("/", fileServer)
+
+	// 2. Upload handler
 	http.HandleFunc("/upload", handleUpload)
 
 	log.Println("Server starting on http://localhost:8080...")
@@ -33,21 +38,13 @@ func main() {
 	}
 }
 
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	http.ServeFile(w, r, indexPath)
-}
-
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 1. API Key Authentication
+	// API Key Authentication
 	key := r.Header.Get("X-API-Key")
 	if key == "" {
 		key = r.URL.Query().Get("api_key")
@@ -57,7 +54,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Read file upload (up to 150 MB)
+	// Read file upload (up to 150 MB)
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		http.Error(w, "File too large (max 150MB)", http.StatusBadRequest)
@@ -71,20 +68,20 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// 3. Validate file extension (must be .exe)
+	// Validate file extension (must be .exe)
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext != ".exe" {
 		http.Error(w, "Forbidden: Only .exe files are allowed", http.StatusBadRequest)
 		return
 	}
 
-	// 4. Remove all old files from the upload directory before saving the new one
+	// Clear old executables from the upload folder
 	if err := clearUploadDir(); err != nil {
 		http.Error(w, "Failed to clean old files", http.StatusInternalServerError)
 		return
 	}
 
-	// 5. Save the new .exe file
+	// Save new .exe
 	dstPath := filepath.Join(uploadDir, filepath.Base(header.Filename))
 	dst, err := os.Create(dstPath)
 	if err != nil {
@@ -98,7 +95,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. Update index.html version via Regex
+	// Update index.html version via Regex
 	newVersion := time.Now().Format("2006.01.02-15:04:05")
 	if err := updateIndexVersion(newVersion); err != nil {
 		log.Printf("Warning: Failed to update index.html version: %v", err)
