@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	uploadDir     = "./upload"
-	indexPath     = "./index.html"
-	maxUploadSize = 150 << 20
+	uploadDir = "./upload"
+	indexPath = "./index.html"
 )
 
 var apiKey = os.Getenv("API_KEY")
@@ -52,13 +51,6 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if key != apiKey {
 		http.Error(w, "Unauthorized: Invalid API Key", http.StatusUnauthorized)
-		return
-	}
-
-	// Read file upload (up to 150 MB)
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		http.Error(w, "File too large (max 150MB)", http.StatusBadRequest)
 		return
 	}
 
