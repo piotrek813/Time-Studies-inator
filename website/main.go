@@ -15,7 +15,7 @@ import (
 const (
 	uploadDir     = "./upload"
 	indexPath     = "./index.html"
-	maxUploadSize = 150 * 8 * 1024 * 1024
+	maxUploadSize = 150 << 20
 )
 
 var apiKey = os.Getenv("API_KEY")
