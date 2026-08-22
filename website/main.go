@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	apiKey        = "MY_SECRET_API_KEY" // Replace with your secret key
 	uploadDir     = "./upload"
 	indexPath     = "./index.html"
 	maxUploadSize = 150 << 20 // 150 MB limit
 )
+
+var apiKey = os.Getenv("API_KEY")
 
 func main() {
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
