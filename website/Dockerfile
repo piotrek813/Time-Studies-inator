@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/server .
 
 # Copy initial index.html into workspace
-COPY index.html .
+COPY index.html rabbit.jpg .
 
 # Create the upload directory
 RUN mkdir -p /app/upload
