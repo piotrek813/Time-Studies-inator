@@ -21,7 +21,7 @@ COPY --from=builder /app/server .
 COPY static .
 
 # Create the upload directory
-RUN mkdir -p /app/upload
+RUN mkdir -p /app/static/upload
 
 # Expose port 8080
 EXPOSE 8080
