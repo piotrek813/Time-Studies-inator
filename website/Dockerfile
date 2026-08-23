@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/server .
 
 # Copy initial index.html into workspace
-COPY static .
+COPY ./static ./static
 
 # Create the upload directory
 RUN mkdir -p /app/static/upload

@@ -122,7 +122,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	version := r.FormValue("version")
 	fmt.Print(version)
-	replaceVersion("index.html", version)
+	replaceVersion("./static/index.html", version)
 
 	w.WriteHeader(http.StatusOK)
 }
