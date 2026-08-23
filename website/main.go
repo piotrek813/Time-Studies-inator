@@ -48,7 +48,7 @@ func replaceVersion(path, newVersion string) error {
 	}
 
 	re := regexp.MustCompile(`v\d+\.\d+\.\d+`)
-	updated := re.ReplaceAllString(string(data), newVersion)
+	updated := re.ReplaceAllString(string(data), "v"+newVersion)
 
 	return os.WriteFile(path, []byte(updated), 0644)
 }
