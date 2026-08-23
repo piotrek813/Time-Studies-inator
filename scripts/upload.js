@@ -1,57 +1,45 @@
-require('dotenv').config();
+require("dotenv").config()
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
+const packageJson = require(path.join(__dirname, "..", "package.json"));
+async function main() {
+  const version = packageJson.version
 
-// Configuration
-const TARGET_URL = 'http://time-studies.hopto.org/upload';
-const API_KEY = process.env.API_KEY;
-const DIST_DIR = path.join(__dirname, '..', 'dist'); // Directory where your built .exe lives
+  const [, , serverUrl] = process.argv;
+  const filePath = path.join(__dirname, "..", "dist", `Time-Studies-Setup-v${version}.exe`);
+  const token = process.env.API_KEY;
 
-async function uploadBuild() {
+  const fileBuffer = fs.readFileSync(filePath);
+  const fileName = path.basename(filePath);
+
+  const form = new FormData();
+  form.append("file", new Blob([fileBuffer]), fileName);
+  form.append("version", version)
+
+  console.log(`Uploading ${fileName} (${fileBuffer.length} bytes) to ${serverUrl} ...`);
+
   try {
-    // 1. Read version from package.json
-    const pkgPath = path.join(__dirname, "..", 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    const version = pkg.version;
-
-    // 2. Construct the expected .exe file path
-    const fileName = `Time-Studies-Setup-v${version}.exe`;
-    const filePath = path.join(DIST_DIR, fileName);
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    console.log(`Preparing to upload: ${fileName}...`);
-
-    // 3. Prepare FormData payload using native Node Blob/FormData
-    const fileBuffer = fs.readFileSync(filePath);
-    const blob = new Blob([fileBuffer], { type: 'application/octet-stream' });
-
-    const formData = new FormData();
-    formData.append('file', blob, fileName);
-
-    // 4. Send POST request with API Key header
-    const response = await fetch(TARGET_URL, {
-      method: 'POST',
+    const res = await fetch(serverUrl, {
+      method: "POST",
       headers: {
-        'X-API-Key': API_KEY,
+        "X-Upload-Token": token,
       },
-      body: formData,
+      body: form,
     });
 
-    const result = await response.text();
+    const text = await res.text();
 
-    if (!response.ok) {
-      throw new Error(`Upload failed (${response.status}): ${result}`);
+    if (!res.ok) {
+      console.error(`Upload failed (${res.status}): ${text}`);
+      process.exit(1);
     }
 
-    console.log(`Success! Server response: ${result}`);
+    console.log(`Success: ${text.trim()}`);
   } catch (err) {
-    console.error(`Error: ${err.message}`);
+    console.error(err);
     process.exit(1);
   }
 }
 
-uploadBuild();
+main();

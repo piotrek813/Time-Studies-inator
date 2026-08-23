@@ -1,123 +1,128 @@
 package main
 
 import (
+	"crypto/subtle"
 	"fmt"
-	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
-	"time"
 )
 
 const (
-	uploadDir = "./upload"
-	indexPath = "./index.html"
+	uploadDir     = "./upload"
+	maxUploadSize = 200 << 20
 )
 
-var apiKey = os.Getenv("API_KEY")
+var authToken string
 
 func main() {
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		log.Fatalf("Failed to create upload directory: %v", err)
+	authToken = os.Getenv("API_KEY")
+	if authToken == "" {
+		log.Fatal("AKI_KEY environment variable must be set (used to authenticate uploads)")
 	}
 
-	// 1. Static file server serving current directory "."
-	// Automatically serves index.html at "/", plus any images/static files in the directory
-	fileServer := http.FileServer(http.Dir("."))
-	http.Handle("/", fileServer)
-
-	// 2. Upload handler
-	http.HandleFunc("/upload", handleUpload)
-
-	log.Println("Server starting on http://localhost:8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		log.Fatalf("failed to create upload dir: %v", err)
 	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.HandleFunc("/upload", handleUpload)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	addr := ":8080"
+	log.Printf("listening on %s, replacing %s on each successful upload", addr, uploadDir)
+	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+func replaceVersion(path, newVersion string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	re := regexp.MustCompile(`v\d+\.\d+\.\d+`)
+	updated := re.ReplaceAllString(string(data), newVersion)
+
+	return os.WriteFile(path, []byte(updated), 0644)
+}
+
+func uploadFile(file multipart.File, header *multipart.FileHeader) error {
+	if err := os.RemoveAll(uploadDir); err != nil {
+		return err
+	}
+
+	if err := os.Mkdir(uploadDir, 0755); err != nil {
+		return err
+	}
+
+	dst, err := os.Create(filepath.Join(uploadDir, header.Filename))
+
+	if err != nil {
+		return err
+	}
+
+	defer dst.Close()
+
+	// Copy the uploaded file to the destination file
+	if _, err := dst.ReadFrom(file); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// API Key Authentication
-	key := r.Header.Get("X-API-Key")
-	if key == "" {
-		key = r.URL.Query().Get("api_key")
+	// --- auth ---
+	token := r.Header.Get("X-Upload-Token")
+	if subtle.ConstantTimeCompare([]byte(token), []byte(authToken)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
-	if key != apiKey {
-		http.Error(w, "Unauthorized: Invalid API Key", http.StatusUnauthorized)
+
+	// --- limit body size ---
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		http.Error(w, fmt.Sprintf("bad multipart form: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Failed to retrieve file from form", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("missing file field: %v", err), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	// Validate file extension (must be .exe)
-	ext := strings.ToLower(filepath.Ext(header.Filename))
+	// --- basic validation ---
+	ext := filepath.Ext(header.Filename)
 	if ext != ".exe" {
-		http.Error(w, "Forbidden: Only .exe files are allowed", http.StatusBadRequest)
+		http.Error(w, "only .exe files are accepted", http.StatusBadRequest)
 		return
 	}
 
-	// Clear old executables from the upload folder
-	if err := clearUploadDir(); err != nil {
-		http.Error(w, "Failed to clean old files", http.StatusInternalServerError)
-		return
-	}
+	err = uploadFile(file, header)
 
-	// Save new .exe
-	dstPath := filepath.Join(uploadDir, filepath.Base(header.Filename))
-	dst, err := os.Create(dstPath)
 	if err != nil {
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, file); err != nil {
-		http.Error(w, "Failed to write file contents", http.StatusInternalServerError)
+		http.Error(w, "Error saving the file", http.StatusInternalServerError)
 		return
 	}
 
-	// Update index.html version via Regex
-	newVersion := time.Now().Format("2006.01.02-15:04:05")
-	if err := updateIndexVersion(newVersion); err != nil {
-		log.Printf("Warning: Failed to update index.html version: %v", err)
-	}
+	version := r.FormValue("version")
+	fmt.Print(version)
+	replaceVersion("index.html", version)
 
-	fmt.Fprintf(w, "Executable '%s' uploaded successfully. Version updated to %s", header.Filename, newVersion)
-}
-
-func clearUploadDir() error {
-	entries, err := os.ReadDir(uploadDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(uploadDir, entry.Name())); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func updateIndexVersion(newVersion string) error {
-	content, err := os.ReadFile(indexPath)
-	if err != nil {
-		return err
-	}
-
-	re := regexp.MustCompile(`(<span\s+id="version">)(.*?)(</span>)`)
-	updated := re.ReplaceAll(content, []byte("${1}"+newVersion+"${3}"))
-
-	return os.WriteFile(indexPath, updated, 0644)
+	w.WriteHeader(http.StatusOK)
 }
