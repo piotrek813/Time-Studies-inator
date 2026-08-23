@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	uploadDir     = "./upload"
+	uploadDir     = "./static/upload"
 	maxUploadSize = 200 << 20
 )
 
@@ -29,7 +29,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.Handle("/", http.FileServer(http.Dir("static")))
 	mux.HandleFunc("/upload", handleUpload)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

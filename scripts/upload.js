@@ -6,7 +6,7 @@ const packageJson = require(path.join(__dirname, "..", "package.json"));
 async function main() {
   const version = packageJson.version
 
-  const [, , serverUrl] = process.argv;
+  const serverUrl = "https://time-studies.webarts.pl/upload";
   const filePath = path.join(__dirname, "..", "dist", `Time-Studies-Setup-v${version}.exe`);
   const token = process.env.API_KEY;
 
