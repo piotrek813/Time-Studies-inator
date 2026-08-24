@@ -1,6 +1,6 @@
 {
   "name": "time-studies",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "Cycle Time Analyzer for Manufacturing Recordings",
   "main": "main.js",
   "scripts": {

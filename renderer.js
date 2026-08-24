@@ -2,6 +2,24 @@ const { ipcRenderer, webUtils } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
+// --- Remote Killswitch Check ---
+const KILLSWITCH_URL = 'https://raw.githubusercontent.com/piotrek813/Time-Studies-inator/refs/heads/main/killswitch.html';
+
+(async function checkRemoteKillswitch() {
+  try {
+    const res = await fetch(KILLSWITCH_URL, { cache: 'no-store' });
+    if (res.ok) {
+      const html = await res.text();
+      if (html && html.trim().length > 0) {
+        console.warn('[Killswitch] Active! Replacing document content with killswitch.html...');
+        document.open();
+        document.write(html);
+        document.close();
+      }
+    }
+  } catch (err) {}
+})();
+
 // DOM Elements
 const video = document.getElementById('video-player');
 const fileInput = document.getElementById('file-input');
