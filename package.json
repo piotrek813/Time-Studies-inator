@@ -1,11 +1,10 @@
 {
   "name": "time-studies",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "description": "Cycle Time Analyzer for Manufacturing Recordings",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "get-version": "echo %npm_package_version%",
     "prebuild": "npm version patch --no-git-tag-version && git add . && git commit -m '%npm_package_version%' && git push",
     "build": "npx electron-builder"
   },

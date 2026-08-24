@@ -7,11 +7,11 @@ async function main() {
   const version = packageJson.version
 
   const serverUrl = "https://time-studies.webarts.pl/upload";
-  const filePath = path.join(__dirname, "..", "dist", `Time-Studies-Setup-v${version}.exe`);
+  const filePath = path.join(__dirname, "..", "dist", `Cycle Time Analyzer Setup ${version}.exe`);
   const token = process.env.API_KEY;
 
   const fileBuffer = fs.readFileSync(filePath);
-  const fileName = path.basename(filePath);
+  const fileName = `Time-Studies-Setup-v${version}.exe`;
 
   const form = new FormData();
   form.append("file", new Blob([fileBuffer]), fileName);
