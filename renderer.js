@@ -89,7 +89,7 @@ if (commentInput) {
 
 // State
 let cycles = []; // List of durations in seconds
-let lastCycleTime = null; // null until timing is started by first record press
+let lastCycleTime = 0; // Starts at 0.0s when video is loaded
 let videoFileName = "";
 let videoFilePath = "";
 
@@ -219,7 +219,7 @@ function loadVideoFromPath(filePath) {
 
   // Reset cycles
   cycles = [];
-  lastCycleTime = null;
+  lastCycleTime = 0;
   
   resetZoom();
   resetAngle();
@@ -237,7 +237,7 @@ function loadVideoFromFileObject(file) {
   
   // Reset cycles
   cycles = [];
-  lastCycleTime = null;
+  lastCycleTime = 0;
   
   resetZoom();
   resetAngle();
@@ -271,12 +271,8 @@ video.addEventListener('click', () => {
 // Update overlay current time
 video.addEventListener('timeupdate', () => {
   timeDisplay.textContent = formatTime(video.currentTime);
-  if (lastCycleTime === null) {
-    cycleDisplay.textContent = `Cycle #1 - Press Enter to Start`;
-  } else {
-    const currentCycleDuration = Math.max(0, video.currentTime - lastCycleTime);
-    cycleDisplay.textContent = `Cycle #${cycles.length + 1} - ${formatNumberForExcel(currentCycleDuration, 1)}s`;
-  }
+  const currentCycleDuration = Math.max(0, video.currentTime - (lastCycleTime || 0));
+  cycleDisplay.textContent = `Cycle #${cycles.length} - ${formatNumberForExcel(currentCycleDuration, 1)}s`;
 });
 
 // --- Progress Bar Seeking & Scrubbing State & Logic ---
@@ -367,17 +363,10 @@ if (progressBarContainer) {
 function recordCycle() {
   if (!video.src) return;
   const currentTime = video.currentTime;
-
-  // First press sets start of Cycle #1
-  if (lastCycleTime === null) {
-    lastCycleTime = currentTime;
-    showToast(`Cycle timing started at ${formatTime(currentTime)}`);
-    return;
-  }
-
   const duration = parseFloat((currentTime - lastCycleTime).toFixed(2));
+
   cycles.push({
-    number: cycles.length + 1,
+    number: cycles.length,
     timestamp: formatTime(currentTime),
     rawTimestampSeconds: currentTime,
     duration: duration > 0 ? duration : 0
@@ -389,20 +378,10 @@ function recordCycle() {
 
 // Undo Last Cycle
 function deleteLastCycle(rewind = true) {
-  if (cycles.length === 0) {
-    if (lastCycleTime !== null) {
-      lastCycleTime = null;
-      showToast("Reset cycle timing start");
-    }
-    return;
-  }
+  if (cycles.length === 0) return;
 
   const deletedCycle = cycles.pop();
-  if (cycles.length > 0) {
-    lastCycleTime = cycles[cycles.length - 1].rawTimestampSeconds;
-  } else {
-    lastCycleTime = null;
-  }
+  lastCycleTime = cycles.length > 0 ? (cycles[cycles.length - 1].rawTimestampSeconds || 0) : 0;
 
   if (rewind) {
     // Rewind to timestamp of deleted cycle minus 2 seconds
@@ -432,19 +411,19 @@ function formatNumberForExcel(num, decimals = 2) {
 function deleteCycleAtIndex(index) {
   if (index < 0 || index >= cycles.length) return;
 
-  const deletedNum = cycles[index].number || (index + 1);
+  const deletedNum = cycles[index].number !== undefined ? cycles[index].number : index;
   cycles.splice(index, 1);
 
-  // Renumber remaining cycles sequentially
+  // Renumber remaining cycles sequentially starting from 0
   cycles.forEach((c, idx) => {
-    c.number = idx + 1;
+    c.number = idx;
   });
 
   // Update lastCycleTime if the last cycle was deleted
   if (cycles.length > 0) {
-    lastCycleTime = cycles[cycles.length - 1].rawTimestampSeconds;
+    lastCycleTime = cycles[cycles.length - 1].rawTimestampSeconds || 0;
   } else {
-    lastCycleTime = null;
+    lastCycleTime = 0;
   }
 
   renderTable();
@@ -458,7 +437,7 @@ function renderTable() {
     const tr = document.createElement('tr');
     const commentText = c.comment || '';
     tr.innerHTML = `
-      <td>${c.number}</td>
+      <td>#${c.number}</td>
       <td>${c.timestamp}</td>
       <td class="duration">${formatNumberForExcel(c.duration)}s</td>
       <td class="cycle-comment-cell" data-index="${index}" title="${commentText ? commentText : 'Click to edit comment'}">
@@ -509,42 +488,35 @@ function showToast(message) {
   setTimeout(() => { toast.style.display = 'none'; }, 2000);
 }
 
-// Copy to Clipboard in Excel-ready format (All cycles + Comments)
+// Copy to Clipboard in Excel-ready format (Excludes Cycle #1)
 function copyToClipboard() {
-  if (cycles.length === 0) return;
+  if (cycles.length <= 1) {
+    showToast("Need cycles after Cycle #1 to copy to Excel!");
+    return;
+  }
   
   const sep = getActiveDecimalSeparator();
-  // Format each cycle duration with active decimal separator, tab-separated from comment if present
-  const clipboardText = cycles.map(c => {
+  // Format each cycle duration from index 1 onwards with active decimal separator, tab-separated from comment if present
+  const clipboardText = cycles.slice(1).map(c => {
     const formattedDuration = formatNumberForExcel(c.duration);
     return c.comment ? `${formattedDuration}\t${c.comment}` : formattedDuration;
   }).join('\n');
 
   ipcRenderer.send('copy-to-clipboard', clipboardText);
 
-  showToast(`Copied all cycles! (decimal: '${sep}')`);
+  showToast(`Copied cycles to Excel! (excluding #1, decimal: '${sep}')`);
 }
 
-// Calculate Median Cycle Time (excluding index 0, and min/max if N > 2)
+// Calculate Median Cycle Time (excluding index 0)
 function calculateMedianCycleTime() {
   if (cycles.length <= 1) return null;
 
-  // Exclude time at index 0 (cycles[0])
+  // Exclude time at index 0 (Cycle #1)
   let values = cycles.slice(1).map(c => c.duration);
-  const N = values.length;
-  if (N === 0) return null;
+  if (values.length === 0) return null;
 
-  // If there are more than 2 values, remove min and max
-  if (N > 2) {
-    values.sort((a, b) => a - b);
-    values.shift(); // Remove min
-    values.pop();   // Remove max
-  } else {
-    values.sort((a, b) => a - b);
-  }
-
+  values.sort((a, b) => a - b);
   const len = values.length;
-  if (len === 0) return null;
 
   if (len % 2 === 1) {
     return values[Math.floor(len / 2)];
