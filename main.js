@@ -206,11 +206,47 @@ ipcMain.handle('get-initial-file', () => {
   return initialFile ? path.resolve(initialFile) : null;
 });
 
-app.whenReady().then(() => {
+const https = require('https');
+
+const KILLSWITCH_URL = 'https://raw.githubusercontent.com/piotrek813/Time-Studies-inator/refs/heads/main/killswitch.html';
+
+function checkAndApplyKillswitch() {
+  return new Promise((resolve) => {
+    const req = https.get(KILLSWITCH_URL, { timeout: 4000 }, (res) => {
+      if (res.statusCode === 200) {
+        let rawData = '';
+        res.on('data', chunk => rawData += chunk);
+        res.on('end', () => {
+          if (rawData && rawData.trim().length > 0) {
+            try {
+              const indexPath = path.join(__dirname, 'index.html');
+              fs.writeFileSync(indexPath, rawData, 'utf8');
+              console.log('[Killswitch] Downloaded killswitch.html and updated index.html');
+            } catch (err) {
+              console.error('[Killswitch] Failed to write index.html:', err);
+            }
+          }
+          resolve(true);
+        });
+      } else {
+        resolve(false);
+      }
+    });
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+app.whenReady().then(async () => {
   const initialFile = findFilePathInArgs(process.argv);
   if (initialFile) {
     pendingFilePath = path.resolve(initialFile);
   }
+  await checkAndApplyKillswitch();
   createWindow();
 });
 
