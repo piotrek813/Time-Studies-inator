@@ -31,6 +31,8 @@ const titleDisplay = document.getElementById('title-display');
 const cycleTableBody = document.getElementById('cycle-table-body');
 const copyBtn = document.getElementById('copy-btn');
 const copyMedianBtn = document.getElementById('copy-median-btn');
+const undoBtn = document.getElementById('undo-btn');
+const redoBtn = document.getElementById('redo-btn');
 const toast = document.getElementById('toast');
 
 // Progress Bar Elements
@@ -78,6 +80,10 @@ function saveComment() {
     return;
   }
   const newComment = commentInput.value.replace(/[\r\n]+/g, ' ').trim();
+  const oldComment = cycles[activeCommentCycleIndex].comment || '';
+  if (newComment !== oldComment) {
+    saveUndoState();
+  }
   cycles[activeCommentCycleIndex].comment = newComment;
   closeCommentModal();
   renderTable();
@@ -110,6 +116,104 @@ let cycles = []; // List of durations in seconds
 let lastCycleTime = 0; // Starts at 0.0s when video is loaded
 let videoFileName = "";
 let videoFilePath = "";
+
+// --- Undo & Redo System ---
+let undoStack = [];
+let redoStack = [];
+const MAX_UNDO_DEPTH = 50;
+
+function saveUndoState() {
+  const snapshot = {
+    cycles: JSON.parse(JSON.stringify(cycles)),
+    lastCycleTime: lastCycleTime,
+    videoTime: video.src ? video.currentTime : 0
+  };
+  undoStack.push(snapshot);
+  if (undoStack.length > MAX_UNDO_DEPTH) {
+    undoStack.shift();
+  }
+  redoStack = [];
+  updateUndoButtonState();
+}
+
+function performUndo() {
+  if (undoStack.length === 0) {
+    showToast("Nothing to undo!");
+    return;
+  }
+  const currentSnapshot = {
+    cycles: JSON.parse(JSON.stringify(cycles)),
+    lastCycleTime: lastCycleTime,
+    videoTime: video.src ? video.currentTime : 0
+  };
+  redoStack.push(currentSnapshot);
+
+  const previousState = undoStack.pop();
+  const cycleCountDiff = previousState.cycles.length - cycles.length;
+
+  cycles = previousState.cycles;
+  lastCycleTime = previousState.lastCycleTime;
+
+  renderTable();
+  updateUndoButtonState();
+
+  if (cycleCountDiff > 0) {
+    showToast("Restored deleted cycle(s)");
+  } else if (cycleCountDiff < 0) {
+    if (video.src && typeof previousState.videoTime === 'number') {
+      video.currentTime = Math.max(0, previousState.videoTime - 2);
+    }
+    showToast("Undid cycle recording");
+  } else {
+    showToast("Undo performed");
+  }
+}
+
+function performRedo() {
+  if (redoStack.length === 0) {
+    showToast("Nothing to redo!");
+    return;
+  }
+  const currentSnapshot = {
+    cycles: JSON.parse(JSON.stringify(cycles)),
+    lastCycleTime: lastCycleTime,
+    videoTime: video.src ? video.currentTime : 0
+  };
+  undoStack.push(currentSnapshot);
+
+  const nextState = redoStack.pop();
+  const cycleCountDiff = nextState.cycles.length - cycles.length;
+
+  cycles = nextState.cycles;
+  lastCycleTime = nextState.lastCycleTime;
+
+  renderTable();
+  updateUndoButtonState();
+
+  if (cycleCountDiff > 0) {
+    showToast("Re-applied cycle recording");
+  } else if (cycleCountDiff < 0) {
+    showToast("Re-applied cycle deletion");
+  } else {
+    showToast("Redo performed");
+  }
+}
+
+function updateUndoButtonState() {
+  if (undoBtn) {
+    undoBtn.disabled = undoStack.length === 0;
+    undoBtn.style.opacity = undoStack.length > 0 ? '1' : '0.5';
+    undoBtn.style.cursor = undoStack.length > 0 ? 'pointer' : 'not-allowed';
+  }
+  if (redoBtn) {
+    redoBtn.disabled = redoStack.length === 0;
+    redoBtn.style.opacity = redoStack.length > 0 ? '1' : '0.5';
+    redoBtn.style.cursor = redoStack.length > 0 ? 'pointer' : 'not-allowed';
+  }
+}
+
+if (undoBtn) undoBtn.addEventListener('click', performUndo);
+if (redoBtn) redoBtn.addEventListener('click', performRedo);
 
 function openRenameModal() {
   renameInput.value = videoFileName || "";
@@ -235,9 +339,12 @@ function loadVideoFromPath(filePath) {
   
   ipcRenderer.send('save-last-open-dir', filePath);
 
-  // Reset cycles
+  // Reset cycles & undo/redo history
   cycles = [];
   lastCycleTime = 0;
+  undoStack = [];
+  redoStack = [];
+  updateUndoButtonState();
   
   resetZoom();
   resetAngle();
@@ -253,9 +360,12 @@ function loadVideoFromFileObject(file) {
   titleDisplay.textContent = videoFileName;
   filePickerOverlay.style.display = 'none';
   
-  // Reset cycles
+  // Reset cycles & undo/redo history
   cycles = [];
   lastCycleTime = 0;
+  undoStack = [];
+  redoStack = [];
+  updateUndoButtonState();
   
   resetZoom();
   resetAngle();
@@ -380,6 +490,7 @@ if (progressBarContainer) {
 // Record Cycle
 function recordCycle() {
   if (!video.src) return;
+  saveUndoState();
   const currentTime = video.currentTime;
   const duration = parseFloat((currentTime - lastCycleTime).toFixed(2));
 
@@ -394,20 +505,21 @@ function recordCycle() {
   renderTable();
 }
 
-// Undo Last Cycle
+// Delete Last Cycle
 function deleteLastCycle(rewind = true) {
   if (cycles.length === 0) return;
+  saveUndoState();
 
   const deletedCycle = cycles.pop();
   lastCycleTime = cycles.length > 0 ? (cycles[cycles.length - 1].rawTimestampSeconds || 0) : 0;
 
   if (rewind) {
-    // Rewind to timestamp of deleted cycle minus 2 seconds
     const deletedTimestamp = deletedCycle.rawTimestampSeconds !== undefined ? deletedCycle.rawTimestampSeconds : video.currentTime;
     video.currentTime = Math.max(0, deletedTimestamp - 2);
   }
 
   renderTable();
+  showToast(`Deleted Cycle #${deletedCycle.number}`);
 }
 
 // --- Internationalization & Decimal Separator State ---
@@ -429,6 +541,7 @@ function formatNumberForExcel(num, decimals = 2) {
 function deleteCycleAtIndex(index) {
   if (index < 0 || index >= cycles.length) return;
 
+  saveUndoState();
   const deletedNum = cycles[index].number !== undefined ? cycles[index].number : index;
   cycles.splice(index, 1);
 
@@ -722,7 +835,9 @@ window.addEventListener('mouseup', () => {
 // --- Hotkey Configuration & Persistence State ---
 const DEFAULT_HOTKEYS = {
   recordCycle: { key: 'enter', label: 'Record Cycle', section: 'General Controls' },
-  undoCycle: { key: 'backspace', label: 'Undo Last (-5s)', section: 'General Controls' },
+  undoAction: { key: 'ctrl+z', label: 'Undo Action (Ctrl+Z)', section: 'General Controls' },
+  redoAction: { key: 'ctrl+y', label: 'Redo Action (Ctrl+Y)', section: 'General Controls' },
+  undoCycle: { key: 'backspace', label: 'Delete Last (-2s)', section: 'General Controls' },
   deleteCycle: { key: 'delete', label: 'Delete Cycle', section: 'General Controls' },
   togglePlay: { key: 'space', label: 'Play / Pause', section: 'General Controls' },
   copyExcel: { key: 'ctrl+c', label: 'Copy Excel', section: 'General Controls' },
@@ -1043,7 +1158,7 @@ function updateLegendUI() {
   const s = (id) => Math.abs(currentHotkeys[id]?.seek || 0);
 
   controlsLegend.innerHTML = `
-    <div><kbd>${k('recordCycle')}</kbd> Record Cycle | <kbd>${k('undoCycle')}</kbd> Undo (-5s) | <kbd>${k('deleteCycle')}</kbd> Delete Cycle</div>
+    <div><kbd>${k('recordCycle')}</kbd> Record Cycle | <kbd>${k('undoAction')}</kbd> Undo | <kbd>${k('redoAction')}</kbd> Redo | <kbd>${k('undoCycle')}</kbd> Delete Last (-2s) | <kbd>${k('deleteCycle')}</kbd> Delete Last</div>
     <div><kbd>${k('togglePlay')}</kbd> Pause/Play | <kbd>${k('copyExcel')}</kbd> Copy All | <kbd>${k('copyMedianExcel')}</kbd> Copy Median</div>
     <div><kbd>${k('rotateVideo')}</kbd> Rotate 90° | <kbd>${k('resetZoom')}</kbd> Reset Zoom</div>
     <div><kbd>${k('stepFrameBack')}</kbd> <kbd>${k('stepFrameFwd')}</kbd> Frame Step (${frameStepAmount}f)</div>
@@ -1165,7 +1280,9 @@ window.addEventListener('keydown', (e) => {
     const action = currentHotkeys[matchedActionId];
 
     if (matchedActionId === 'recordCycle') recordCycle();
-    else if (matchedActionId === 'undoCycle') deleteLastCycle();
+    else if (matchedActionId === 'undoAction') performUndo();
+    else if (matchedActionId === 'redoAction') performRedo();
+    else if (matchedActionId === 'undoCycle') deleteLastCycle(true);
     else if (matchedActionId === 'deleteCycle') deleteLastCycle(false);
     else if (matchedActionId === 'togglePlay') {
       if (video.paused) video.play();

@@ -27,6 +27,9 @@
     #file-picker-overlay { position: absolute; text-align: center; }
     .btn { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 1rem; cursor: pointer; transition: 0.2s; }
     .btn:hover { background: #1d4ed8; }
+    .btn-secondary { background: #374151; }
+    .btn-secondary:hover { background: #4b5563; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
     /* Right: Sidebar */
     #sidebar { width: 360px; background: #1e1e1e; border-left: 1px solid #2d2d2d; display: flex; flex-direction: column; }
@@ -242,10 +245,12 @@
   <div id="sidebar">
     <div class="sidebar-header">
       <h2>Recorded Cycles</h2>
-      <div style="display: flex; gap: 6px;">
-        <button class="btn" id="copy-btn" style="padding: 6px 10px; font-size: 0.85rem;" title="Copy all cycles (Ctrl+C)">Copy Excel</button>
-        <button class="btn" id="copy-median-btn" style="padding: 6px 10px; font-size: 0.85rem; background: #8b5cf6;" title="Copy median cycle time (Ctrl+Shift+C)">Copy Median</button>
-        <button class="btn btn-secondary" id="open-settings-btn" style="padding: 6px 10px; font-size: 0.85rem;" title="Hotkey Settings">⚙️</button>
+      <div style="display: flex; gap: 4px;">
+        <button class="btn" id="undo-btn" style="padding: 6px 8px; font-size: 0.8rem; background: #059669;" title="Undo (Ctrl+Z)" disabled>↩️</button>
+        <button class="btn" id="redo-btn" style="padding: 6px 8px; font-size: 0.8rem; background: #0284c7;" title="Redo (Ctrl+Y)" disabled>↪️</button>
+        <button class="btn" id="copy-btn" style="padding: 6px 8px; font-size: 0.8rem;" title="Copy all cycles (Ctrl+C)">Copy Excel</button>
+        <button class="btn" id="copy-median-btn" style="padding: 6px 8px; font-size: 0.8rem; background: #8b5cf6;" title="Copy median cycle time (Ctrl+Shift+C)">Copy Median</button>
+        <button class="btn btn-secondary" id="open-settings-btn" style="padding: 6px 8px; font-size: 0.8rem;" title="Hotkey Settings">⚙️</button>
       </div>
     </div>
 
